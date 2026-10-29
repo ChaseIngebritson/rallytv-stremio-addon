@@ -1,5 +1,6 @@
 import type { MetaDetail, MetaPreview, MetaVideo } from 'stremio-addon-sdk';
 import { inspectPlaylistForDrm } from './drm';
+import { formatRuntimeMs } from './hlsMedia';
 import { parseMasterPlaylist, pickAudioRendition, pickVideoRendition } from './hlsMaster';
 import {
   AddonConfig,
@@ -62,6 +63,14 @@ export const ID_PREFIX = 'rallytv:';
 let cachedSession: AnonymousSession | null = null;
 const itemCache = new Map<string, RallyEntity>();
 const productCache = new Map<string, RallyProduct>();
+
+/** Short-lived playable cache — VOD remux hits resolve on every HLS segment. */
+const PLAYABLE_TTL_MS = 2 * 60 * 1000;
+const playableCache = new Map<string, { value: PlayableStream; expiresAt: number }>();
+
+function playableCacheKey(productId: string, config: AddonConfig): string {
+  return `${productId}|${config.authToken || ''}|${config.locale || 'en'}|${config.country || ''}`;
+}
 
 export function rememberItem<T extends RallyEntity>(item: T): T {
   if (item?.id) itemCache.set(item.id, item);
@@ -399,11 +408,14 @@ function cardToVideoEntry(card: RallyEntity, season: number, episode: number): M
     .filter(Boolean)
     .join(' ')
     .trim();
+  const runtime = formatRuntimeMs(card.duration, card.formatted_duration);
   const overview =
-    [badge, card.short_description, card.subheading].filter(Boolean).join(' — ') || undefined;
+    [runtime, badge, card.short_description, card.subheading].filter(Boolean).join(' — ') ||
+    undefined;
+  const baseTitle = card.title || `Episode ${episode}`;
   return {
     id: toMetaId(card.id),
-    title: card.title || `Episode ${episode}`,
+    title: runtime ? `${baseTitle} (${runtime})` : baseTitle,
     season,
     episode,
     // MetaVideo typings require released; fall back when schedule has no start_time
@@ -706,6 +718,10 @@ export async function resolvePlayableStream(
   productId: string,
   config: AddonConfig = {},
 ): Promise<PlayableStream> {
+  const cacheKey = playableCacheKey(productId, config);
+  const cached = playableCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
   const session = await getAnonymousSession();
   const locale = config.locale || 'en';
   const country = config.country || session.country || 'us';
@@ -770,6 +786,7 @@ export async function resolvePlayableStream(
     };
   }
 
+  playableCache.set(cacheKey, { value: playable, expiresAt: Date.now() + PLAYABLE_TTL_MS });
   return playable;
 }
 

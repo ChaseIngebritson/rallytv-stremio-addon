@@ -134,7 +134,7 @@ export interface PlayableStream {
   live: boolean;
   /**
    * When the master is demuxed (separate AUDIO renditions), Stremio cannot play it.
-   * Prefer addon-side ffmpeg remux of these media playlists into MPEG-TS.
+   * VOD: addon remuxes to seekable muxed HLS; live: progressive MPEG-TS pipe.
    */
   remux?: {
     videoUrl: string;

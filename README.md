@@ -121,13 +121,16 @@ See [.env.example](.env.example) for script-only env vars (`PORT`, `RALLYTV_AUTH
 
 ## Playback / remux
 
-Many Rally.tv titles serve a **demuxed** HLS master (video `.ts` + separate audio `.aac` renditions). Stremio hangs on that shape.
+Many Rally.tv titles serve a **demuxed** HLS master (separate video + audio renditions). Stremio hangs on that shape.
 
-When ffmpeg is available (`ffmpeg-static` or system binary), the stream handler returns an addon URL:
+When ffmpeg is available (`ffmpeg-static` or system binary), the stream handler returns an addon remux URL:
 
-`/remux/{productId}/stream.ts` (or `/{config}/remux/{productId}/stream.ts`)
+| Content | URL | Behavior |
+|---|---|---|
+| **VOD** | `/remux/{productId}/index.m3u8` | Muxed HLS with on-demand A/V segments — **seekable**, full duration |
+| **Live** | `/remux/{productId}/stream.ts` | Progressive MPEG-TS pipe (live; no scrubbing) |
 
-which runs ffmpeg (`-c copy`) to combine ~720p video + default/English audio into MPEG-TS. Set `ADDON_BASE_URL` if the auto-detected public URL is wrong (Railway uses `RAILWAY_PUBLIC_DOMAIN`).
+Configured installs use `/{config}/remux/...`. Set `ADDON_BASE_URL` if the auto-detected public URL is wrong (Railway uses `RAILWAY_PUBLIC_DOMAIN`).
 
 Without ffmpeg, demuxed titles fall back to a **video-only** media playlist (often silent).
 
@@ -137,4 +140,4 @@ Without ffmpeg, demuxed titles fall back to a **video-only** media playlist (oft
 - Stremio seasons are numbered (Season 1 = Schedule, Season 2 = Full Stage Replays, …); section names are in the series description
 - Entitlement enforcement may tighten later — keep an Auth0 token ready
 - If Rally.tv enables DRM on an asset, that title will simply have **no playable stream**
-- Remux is copy-only MPEG-TS over HTTP (seeking may be limited); each viewer runs an ffmpeg process on the host
+- VOD remux runs ffmpeg per HLS segment (cached briefly); heavy seeking still costs CPU on the host

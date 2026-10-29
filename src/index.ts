@@ -11,14 +11,18 @@ import { configurePage } from './configurePage';
 import * as rally from './rallytv';
 import {
   encodeConfigPath,
+  handleVodPlaylist,
+  handleVodSegment,
   hasFfmpeg,
   parseConfigPath,
   pipeRemuxMpegTs,
   publicBaseUrl,
+  remuxPlaylistUrl,
   remuxStreamUrl,
   resolveFfmpegPath,
 } from './remux';
 import { AddonConfig, EventCatalogKey, isRallyError } from './types/rally';
+import { formatRuntimeMs } from './hlsMedia';
 
 // Avoid 7000 — macOS AirPlay Receiver (ControlCenter/AirTunes) often owns it.
 const PORT = Number(process.env.PORT || 3000);
@@ -284,9 +288,7 @@ builder.defineMetaHandler(async (rawArgs) => {
         meta: {
           ...preview,
           type: 'movie',
-          runtime:
-            cached.formatted_duration ||
-            (cached.duration ? `${Math.round(cached.duration / 60000)} min` : undefined),
+          runtime: formatRuntimeMs(cached.duration, cached.formatted_duration),
         },
         cacheMaxAge: 600,
       };
@@ -300,9 +302,7 @@ builder.defineMetaHandler(async (rawArgs) => {
           meta: {
             ...preview,
             type: 'movie',
-            runtime:
-              product.formatted_duration ||
-              (product.duration ? `${Math.round(product.duration / 60000)} min` : undefined),
+            runtime: formatRuntimeMs(product.duration, product.formatted_duration),
           },
           cacheMaxAge: 600,
         };
@@ -345,14 +345,17 @@ builder.defineStreamHandler(async (rawArgs) => {
     const playable = await rally.resolvePlayableStream(productId, config || {});
     const cfg = config || {};
 
-    // Demuxed masters hang in Stremio — remux default audio + ~720p video to MPEG-TS.
+    // Demuxed masters hang in Stremio — remux default audio + ~720p video.
+    // VOD: muxed HLS (seekable + duration). Live: progressive MPEG-TS pipe.
     if (playable.remux?.videoUrl && playable.remux.audioUrl && hasFfmpeg()) {
       const base = publicBaseUrl(PORT);
       const configPath = encodeConfigPath(cfg);
       const stream = {
         name: 'Rally.tv',
-        title: playable.live ? 'Live remux (A/V)' : 'Remuxed TS (A/V)',
-        url: remuxStreamUrl(base, productId, configPath),
+        title: playable.live ? 'Live remux (A/V)' : 'Remuxed HLS (A/V, seekable)',
+        url: playable.live
+          ? remuxStreamUrl(base, productId, configPath)
+          : remuxPlaylistUrl(base, productId, configPath),
         behaviorHints: {
           notWebReady: true,
           bingeGroup: 'rallytv-remux',
@@ -417,15 +420,25 @@ app.get('/configure', (_req, res) => {
   res.end(landing);
 });
 
-async function handleRemux(req: express.Request, res: express.Response): Promise<void> {
+function remuxConfigFromReq(req: express.Request): AddonConfig {
+  const configParam = req.params.config;
+  return parseConfigPath(Array.isArray(configParam) ? configParam[0] : configParam);
+}
+
+function parseProductId(req: express.Request): string | null {
   const productId = String(req.params.productId || '');
-  if (!/^[0-9a-f-]{36}$/i.test(productId)) {
+  return /^[0-9a-f-]{36}$/i.test(productId) ? productId : null;
+}
+
+/** Live progressive MPEG-TS remux. */
+async function handleRemuxLive(req: express.Request, res: express.Response): Promise<void> {
+  const productId = parseProductId(req);
+  if (!productId) {
     res.status(400).type('text/plain').send('invalid product id');
     return;
   }
 
-  const configParam = req.params.config;
-  const config = parseConfigPath(Array.isArray(configParam) ? configParam[0] : configParam);
+  const config = remuxConfigFromReq(req);
   if (!hasFfmpeg()) {
     res.status(503).type('text/plain').send('ffmpeg not installed on addon host');
     return;
@@ -439,7 +452,7 @@ async function handleRemux(req: express.Request, res: express.Response): Promise
       res.status(404).type('text/plain').send('no remuxable renditions for this title');
       return;
     }
-    console.log('[remux] start', productId, audioUrl ? 'A/V' : 'video-only');
+    console.log('[remux] live pipe', productId, audioUrl ? 'A/V' : 'video-only');
     pipeRemuxMpegTs({
       videoUrl,
       audioUrl,
@@ -456,12 +469,99 @@ async function handleRemux(req: express.Request, res: express.Response): Promise
   }
 }
 
+/** Seekable VOD: muxed HLS playlist. */
+async function handleRemuxVodPlaylist(req: express.Request, res: express.Response): Promise<void> {
+  const productId = parseProductId(req);
+  if (!productId) {
+    res.status(400).type('text/plain').send('invalid product id');
+    return;
+  }
+  if (!hasFfmpeg()) {
+    res.status(503).type('text/plain').send('ffmpeg not installed on addon host');
+    return;
+  }
+
+  try {
+    const config = remuxConfigFromReq(req);
+    const playable = await rally.resolvePlayableStream(productId, config);
+    const videoUrl = playable.remux?.videoUrl;
+    if (!videoUrl) {
+      res.status(404).type('text/plain').send('no remuxable renditions for this title');
+      return;
+    }
+    console.log('[remux] vod playlist', productId);
+    await handleVodPlaylist({
+      productId,
+      videoUrl,
+      audioUrl: playable.remux?.audioUrl || null,
+      headers: playable.headers,
+      res,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[remux] playlist', message);
+    if (!res.headersSent) res.status(502).type('text/plain').send(message);
+  }
+}
+
+/** Seekable VOD: on-demand muxed MPEG-TS segment. */
+async function handleRemuxVodSegment(req: express.Request, res: express.Response): Promise<void> {
+  const productId = parseProductId(req);
+  if (!productId) {
+    res.status(400).type('text/plain').send('invalid product id');
+    return;
+  }
+  const index = Number(req.params.index);
+  if (!Number.isInteger(index) || index < 0) {
+    res.status(400).type('text/plain').send('invalid segment index');
+    return;
+  }
+  if (!hasFfmpeg()) {
+    res.status(503).type('text/plain').send('ffmpeg not installed on addon host');
+    return;
+  }
+
+  try {
+    const config = remuxConfigFromReq(req);
+    const playable = await rally.resolvePlayableStream(productId, config);
+    const videoUrl = playable.remux?.videoUrl;
+    if (!videoUrl) {
+      res.status(404).type('text/plain').send('no remuxable renditions for this title');
+      return;
+    }
+    await handleVodSegment({
+      productId,
+      videoUrl,
+      audioUrl: playable.remux?.audioUrl || null,
+      headers: playable.headers,
+      index,
+      res,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[remux] segment', index, message);
+    if (!res.headersSent) res.status(502).type('text/plain').send(message);
+  }
+}
+
 // Must be registered before the SDK router so /:config/... is not swallowed.
 app.get('/remux/:productId/stream.ts', (req, res) => {
-  void handleRemux(req, res);
+  void handleRemuxLive(req, res);
 });
 app.get('/:config/remux/:productId/stream.ts', (req, res) => {
-  void handleRemux(req, res);
+  void handleRemuxLive(req, res);
+});
+app.get('/remux/:productId/index.m3u8', (req, res) => {
+  void handleRemuxVodPlaylist(req, res);
+});
+app.get('/:config/remux/:productId/index.m3u8', (req, res) => {
+  void handleRemuxVodPlaylist(req, res);
+});
+app.get('/remux/:productId/seg/:index.ts', (req, res) => {
+  void handleRemuxVodSegment(req, res);
+});
+app.get('/:config/remux/:productId/seg/:index.ts', (req, res) => {
+  void handleRemuxVodSegment(req, res);
 });
 
 // Stremio protocol: /:config?/manifest.json and catalog/meta/stream routes
