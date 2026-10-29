@@ -2,13 +2,11 @@
   "name": "rallytv-stremio-addon",
   "version": "1.2.0",
   "description": "Personal Stremio addon for Rally.tv (clear HLS only)",
-  "main": "dist/src/index.js",
+  "main": "src/index.ts",
   "type": "commonjs",
   "scripts": {
-    "build": "tsc",
     "typecheck": "tsc --noEmit",
     "start": "tsx src/index.ts",
-    "start:dist": "npm run build && node dist/src/index.js",
     "start:daemon": "bash scripts/run-daemon.sh",
     "stop": "bash scripts/stop-daemon.sh",
     "inspect": "tsx scripts/inspect-stream.ts",
@@ -22,13 +20,13 @@
   "dependencies": {
     "express": "^4.22.3",
     "stremio-addon-sdk": "^1.6.10",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@railway/cli": "^5.71.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.7.0",
-    "@types/stremio-addon-sdk": "^1.6.12"
+    "@types/stremio-addon-sdk": "^1.6.12",
+    "typescript": "^5.9.3"
   }
 }
