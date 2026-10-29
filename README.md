@@ -15,7 +15,7 @@ Stremio cannot play Widevine/FairPlay. This addon:
 ## Requirements
 
 - Node.js 18+
-- Bundled **ffmpeg** via `ffmpeg-static` (system `ffmpeg` also works as fallback)
+- **ffmpeg** on PATH (Railway installs via `nixpacks.toml`; locally `brew install ffmpeg`). `ffmpeg-static` is a last-resort fallback and can crash on Linux HLS remux.
 - Stremio Desktop (or another client that can install a local addon URL)
 - Optional: Rally.tv account (email OTP) if play starts requiring auth
 

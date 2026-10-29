@@ -4,9 +4,19 @@ import ffmpegStatic from 'ffmpeg-static';
 
 let resolvedFfmpeg: string | null | undefined;
 
-/** Prefer bundled ffmpeg-static, then PATH `ffmpeg`. */
+/**
+ * Prefer system `ffmpeg` (Nixpacks/apt/brew) over ffmpeg-static.
+ * ffmpeg-static has been observed to SIGSEGV remuxing Rally HLS on Railway Linux.
+ */
 export function resolveFfmpegPath(): string | null {
   if (resolvedFfmpeg !== undefined) return resolvedFfmpeg;
+  try {
+    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+    resolvedFfmpeg = 'ffmpeg';
+    return resolvedFfmpeg;
+  } catch {
+    // fall through to bundled binary
+  }
   if (ffmpegStatic) {
     try {
       execFileSync(ffmpegStatic, ['-version'], { stdio: 'ignore' });
@@ -16,14 +26,8 @@ export function resolveFfmpegPath(): string | null {
       // fall through
     }
   }
-  try {
-    execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-    resolvedFfmpeg = 'ffmpeg';
-    return resolvedFfmpeg;
-  } catch {
-    resolvedFfmpeg = null;
-    return null;
-  }
+  resolvedFfmpeg = null;
+  return null;
 }
 
 export function hasFfmpeg(): boolean {
