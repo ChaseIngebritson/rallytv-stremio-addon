@@ -1,19 +1,22 @@
-'use strict';
-
 /**
  * Spike helper: obtain an anonymous session, search once, fetch one VOD + live
  * playlist, and print a DRM verdict. Does not store secrets.
  *
  * Usage:
- *   node scripts/inspect-stream.js
- *   node scripts/inspect-stream.js "Full Stage Replay"
- *   RALLYTV_AUTH_TOKEN=... node scripts/inspect-stream.js
+ *   npm run inspect
+ *   npm run inspect -- "Full Stage Replay"
+ *   RALLYTV_AUTH_TOKEN=... npm run inspect
  */
 
-const rally = require('../src/rallytv');
-const { inspectPlaylistForDrm } = require('../src/drm');
+import { inspectPlaylistForDrm } from '../src/drm';
+import * as rally from '../src/rallytv';
+import type { AddonConfig } from '../src/types/rally';
 
-async function inspectProduct(label, productId, config) {
+async function inspectProduct(
+  label: string,
+  productId: string,
+  config: AddonConfig,
+): Promise<boolean> {
   console.log(`\n=== ${label} (${productId}) ===`);
   try {
     const playable = await rally.resolvePlayableStream(productId, config);
@@ -25,21 +28,27 @@ async function inspectProduct(label, productId, config) {
     console.log('master head:\n' + body.split('\n').slice(0, 12).join('\n'));
     return true;
   } catch (err) {
-    console.error('FAILED:', err.message);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('FAILED:', message);
     return false;
   }
 }
 
-async function main() {
+async function main(): Promise<void> {
   const query = process.argv[2] || 'Full Stage Replay';
-  const config = {
+  const config: AddonConfig = {
     authToken: process.env.RALLYTV_AUTH_TOKEN || '',
     locale: process.env.RALLYTV_LOCALE || 'en',
     country: process.env.RALLYTV_COUNTRY || 'us',
   };
 
   const session = await rally.getAnonymousSession();
-  console.log('Anonymous session ok; country=', session.country, 'expires=', new Date(session.expiresAt).toISOString());
+  console.log(
+    'Anonymous session ok; country=',
+    session.country,
+    'expires=',
+    new Date(session.expiresAt).toISOString(),
+  );
 
   const { json } = await rally.search(query, { limit: 10, config });
   const videos = rally.collectPlayableVideos(json);
@@ -49,7 +58,7 @@ async function main() {
   }
 
   const vodId = videos[0]?.id;
-  const results = [];
+  const results: Array<[string, boolean]> = [];
   results.push(['live', await inspectProduct('Live 24/7', rally.PRODUCTS.live, config)]);
   if (vodId) {
     results.push(['vod', await inspectProduct('Sample VOD', vodId, config)]);

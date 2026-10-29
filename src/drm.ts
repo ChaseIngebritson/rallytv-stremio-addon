@@ -1,6 +1,4 @@
-'use strict';
-
-const DRM_PATTERNS = [
+const DRM_PATTERNS: RegExp[] = [
   /#EXT-X-KEY/i,
   /SAMPLE-AES/i,
   /com\.widevine/i,
@@ -12,11 +10,12 @@ const DRM_PATTERNS = [
   /Widevine/i,
 ];
 
-/**
- * @param {string} body
- * @returns {{ ok: boolean, reason?: string }}
- */
-function inspectPlaylistForDrm(body) {
+export interface DrmInspection {
+  ok: boolean;
+  reason?: string;
+}
+
+export function inspectPlaylistForDrm(body: string): DrmInspection {
   if (!body || typeof body !== 'string') {
     return { ok: false, reason: 'empty playlist' };
   }
@@ -31,4 +30,4 @@ function inspectPlaylistForDrm(body) {
   return { ok: true };
 }
 
-module.exports = { inspectPlaylistForDrm, DRM_PATTERNS };
+export { DRM_PATTERNS };

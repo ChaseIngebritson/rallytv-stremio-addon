@@ -15,7 +15,17 @@ fi
 export PATH="${HOME}/.nvm/versions/node/$(ls "${HOME}/.nvm/versions/node" 2>/dev/null | tail -1)/bin:${PATH}"
 export PORT
 
-nohup node src/index.js >>"$LOG" 2>&1 &
+# Prefer tsx (TypeScript source); fall back to compiled dist if present.
+if command -v npx >/dev/null 2>&1; then
+  START_CMD=(npx --yes tsx src/index.ts)
+elif [[ -f dist/src/index.js ]]; then
+  START_CMD=(node dist/src/index.js)
+else
+  echo "Need tsx (npm install) or a built dist/ — run: npm install && npm run build"
+  exit 1
+fi
+
+nohup "${START_CMD[@]}" >>"$LOG" 2>&1 &
 echo $! >"$PIDFILE"
 sleep 1
 if ! kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
@@ -25,6 +35,6 @@ fi
 
 echo "Started pid $(cat "$PIDFILE")"
 echo "Log: $LOG"
-echo "Manifest: http://127.0.0.1:${PORT}/manifest.json"
-echo "Landing:  http://127.0.0.1:${PORT}/"
+echo "Configure: http://127.0.0.1:${PORT}/configure"
+echo "Manifest:  http://127.0.0.1:${PORT}/manifest.json"
 curl -sf "http://127.0.0.1:${PORT}/manifest.json" >/dev/null && echo "Health check: OK"

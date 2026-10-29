@@ -65,34 +65,34 @@ Known product IDs from web client config:
 | `events_product` | `420b28f8-26c0-566a-bbd5-ed5f171182a7` |
 | `search_product` | `d7cc4789-db63-5cd1-8d3f-7aece4d36ce6` |
 
-`GET /v3/products/{uuid}?namespace=rallytv` returns 404 for Rally.tv UUIDs (legacy Red Bull TV product API does not serve these IDs).
+`GET https://api.redbull.tv/v3/products/{uuid}?namespace=rallytv` returns 404 for Rally.tv UUIDs. Use **tv-api** instead:
 
-Working discovery:
+### Event / page products (mirrors www.rally.tv/en/page/{id})
+
+```
+GET https://tv-api.redbull.com/products/v5.2/rallytv/{locale}/{country}/{id}
+GET https://tv-api.redbull.com/products/dynamic/v5.2/rallytv/{locale}/{country}/{id}
+GET https://tv-api.redbull.com/collections/v5.2/rallytv/{locale}/{country}/{collectionId}
+```
+
+- Product `type: "page"`, `content_type: "stop"` = a rally weekend (e.g. Italia Sardegna).
+- Product response lists collection **stubs** (`{ id }`); hydrate each via `/collections/v5.2/...`.
+- Dynamic endpoint adds badges, start/end time, location, `default_live_program`.
+- Typical rails on a stop page: Schedule, Full Stage Replays, Extended Highlights, Quick Recaps, Must-See Clips, …
+- Events hub (`events_product`) collections: Calendar Featured, Upcoming Events, Past WRC Events, Past ERC Events, …
+
+Pagination: collection `meta.next` / `?offset=N`.
+
+### Search (clips / fallback discovery)
 
 ```
 GET https://api.redbull.tv/v3/search?namespace=rallytv&q=<query>&limit=20
 Authorization: <session token>
 ```
 
-Returns collections (`Top Results`, `Videos`, `Films`, `Events`). Playable items have `type: "video"` and `playable: true`.
+Returns collections (`Top Results`, `Videos`, `Films`, `Events`). Playable items have `type: "video"` and `playable: true`. Event pages appear as `type: "page"`, `content_type: "stop"`.
 
-Item shape (non-secret fields):
-
-```json
-{
-  "id": "<uuid>",
-  "title": "SS20 Full Stage Replay | Secto Rally Finland 2026",
-  "type": "video",
-  "content_type": "clip",
-  "duration": 5311440,
-  "playable": true,
-  "share_url": "https://www.rally.tv/video/<uuid>",
-  "content_entitlements": ["rally-content"],
-  "resources": ["rbtv_display_art_portrait", "..."]
-}
-```
-
-Artwork: `https://resources.redbull.tv/<id>/<resource>/`
+Artwork: `https://resources.redbull.tv/<id>/<resource>/` (tv-api also returns `media_resources.*.url` with an `{im}` transform placeholder).
 
 ## Playback
 

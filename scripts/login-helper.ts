@@ -1,5 +1,3 @@
-'use strict';
-
 /**
  * Local helper for capturing a Rally.tv user session token.
  *
@@ -8,16 +6,16 @@
  * validates a token you paste.
  *
  * Usage:
- *   node scripts/login-helper.js
- *   node scripts/login-helper.js --check
- *   RALLYTV_AUTH_TOKEN='eyJ...' node scripts/login-helper.js --check
+ *   npm run login-helper
+ *   npm run login-helper -- --check
+ *   RALLYTV_AUTH_TOKEN='eyJ...' npm run login-helper -- --check
  */
 
-const readline = require('readline');
+import * as readline from 'readline';
 
 const CLIENT_ID = 'zL90h7Q1y0684rRPC2O3UwZQqPodIiVX';
 
-function printInstructions() {
+function printInstructions(): void {
   console.log(`
 Rally.tv Auth0 session helper
 =============================
@@ -42,7 +40,7 @@ Notes:
 `);
 }
 
-async function checkToken(token) {
+async function checkToken(token: string): Promise<void> {
   const auth = token.startsWith('Bearer ') ? token : `Bearer ${token}`;
   const res = await fetch('https://abs-gateway.redbull.com/', {
     headers: {
@@ -53,12 +51,19 @@ async function checkToken(token) {
     redirect: 'manual',
   });
   console.log('abs-gateway probe status:', res.status);
-  console.log('(403/404 from the root path is common; use Stremio play errors as the real signal.)');
+  console.log(
+    '(403/404 from the root path is common; use Stremio play errors as the real signal.)',
+  );
 
   // Decode JWT payload without verifying — local inspection only
   try {
     const raw = token.replace(/^Bearer\s+/i, '');
-    const payload = JSON.parse(Buffer.from(raw.split('.')[1], 'base64url').toString('utf8'));
+    const payload = JSON.parse(Buffer.from(raw.split('.')[1], 'base64url').toString('utf8')) as {
+      iss?: string;
+      aud?: string | string[];
+      exp?: number;
+      sub?: string;
+    };
     console.log('JWT claims (unverified):', {
       iss: payload.iss,
       aud: payload.aud,
@@ -74,14 +79,16 @@ async function checkToken(token) {
   }
 }
 
-async function promptToken() {
+async function promptToken(): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise((resolve) => rl.question('Paste Auth0 access token (or empty to skip): ', resolve));
+  const answer = await new Promise<string>((resolve) =>
+    rl.question('Paste Auth0 access token (or empty to skip): ', resolve),
+  );
   rl.close();
   return (answer || '').trim();
 }
 
-async function main() {
+async function main(): Promise<void> {
   printInstructions();
   const check = process.argv.includes('--check');
   let token = process.env.RALLYTV_AUTH_TOKEN || '';
