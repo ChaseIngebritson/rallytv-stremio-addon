@@ -2,33 +2,35 @@
 
 Watch Rally.tv live TV, stage replays, highlights, and event schedules in [Stremio](https://www.stremio.com/).
 
-**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Use with your own subscription only. This may conflict with Rally.tv’s Terms of Service — do not redistribute or host a public copy.
+**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Use with your own subscription only. This may conflict with Rally.tv’s Terms of Service — do not redistribute or host a public copy for others.
 
-## Install
+## Deploy
 
-**One-click:** [Install in Stremio](stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json)
+Host your own private instance (recommended on [Railway](https://railway.com)):
 
-Or in Stremio → **Addons** → **Community Addons** → **Install from URL**, paste:
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/ChaseIngebritson/rallytv-stremio-addon&utm_medium=integration&utm_source=button&utm_campaign=rallytv-stremio-addon)
 
-```
-https://rallytv-stremio-addon-production.up.railway.app/manifest.json
-```
+After deploy:
 
-| | |
-|---|---|
-| Configure | https://rallytv-stremio-addon-production.up.railway.app/configure |
-| Manifest | https://rallytv-stremio-addon-production.up.railway.app/manifest.json |
+1. Open the service → **Settings** → **Networking** → **Generate Domain**
+2. Visit `https://<your-domain>/configure`
+3. Paste your Auth0 access token and use **Install in Stremio** / **Copy HTTPS manifest**
+4. Install that **configured** URL in Stremio — not the bare `/manifest.json`
+
+Local development: see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## Sign in (recommended)
 
 Many titles need a Rally.tv subscription. Login is **email OTP** (no password).
 
 1. Log into [rally.tv](https://www.rally.tv) in a browser
-2. Open the [configure page](https://rallytv-stremio-addon-production.up.railway.app/configure) and paste your Auth0 access token  
+2. Open your instance’s `/configure` page and paste your Auth0 access token  
    *(tip: run `npm run login-helper` locally if you need help finding it)*
-3. Use **Install in Stremio** / **Copy HTTPS manifest** — install that configured URL, not the bare `/manifest.json`
+3. Install the configured manifest URL from that page
 
 When the token expires, paste a fresh one and reinstall the configured URL.
+
+Your Auth0 token is embedded in the install URL — keep that URL private and do not share it.
 
 ## What’s included
 
