@@ -1,6 +1,6 @@
 # Rally.tv → Stremio (personal)
 
-Personal LAN Stremio addon that catalogs Rally.tv content and plays **clear HLS only** using the official Red Bull / Rally.tv play service.
+Personal LAN Stremio addon that catalogs Rally.tv content and plays **clear HLS** using the official Red Bull / Rally.tv play service. Demuxed (separate audio/video) playlists are **remuxed** via ffmpeg into MPEG-TS so Stremio can play them.
 
 **Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Personal use with your own subscription only. May conflict with Rally.tv Terms of Service. Do not redistribute or host publicly.
 
@@ -15,6 +15,7 @@ Stremio cannot play Widevine/FairPlay. This addon:
 ## Requirements
 
 - Node.js 18+
+- **ffmpeg** on the addon host (`brew install ffmpeg` locally; Railway image installs it via `nixpacks.toml`)
 - Stremio Desktop (or another client that can install a local addon URL)
 - Optional: Rally.tv account (email OTP) if play starts requiring auth
 
@@ -93,9 +94,22 @@ npm run login-helper -- --check
 
 See [.env.example](.env.example) for script-only env vars (`PORT`, `RALLYTV_AUTH_TOKEN`, locale/country). Stremio user data is configured in the addon settings UI and encoded into the install URL by Stremio.
 
+## Playback / remux
+
+Many Rally.tv titles serve a **demuxed** HLS master (video `.ts` + separate audio `.aac` renditions). Stremio hangs on that shape.
+
+When ffmpeg is available, the stream handler returns an addon URL:
+
+`/remux/{productId}/stream.ts` (or `/{config}/remux/{productId}/stream.ts`)
+
+which runs ffmpeg (`-c copy`) to combine ~720p video + default/English audio into MPEG-TS. Set `ADDON_BASE_URL` if the auto-detected public URL is wrong (Railway uses `RAILWAY_PUBLIC_DOMAIN`).
+
+Without ffmpeg, demuxed titles fall back to a **video-only** media playlist (often silent).
+
 ## Limitations
 
 - Legacy `api.redbull.tv/v3/products/{id}` returns 404; events use **tv-api** `products/v5.2` + `collections/v5.2`
 - Stremio seasons are numbered (Season 1 = Schedule, Season 2 = Full Stage Replays, …); section names are in the series description
 - Entitlement enforcement may tighten later — keep an Auth0 token ready
 - If Rally.tv enables DRM on an asset, that title will simply have **no playable stream**
+- Remux is copy-only MPEG-TS over HTTP (seeking may be limited); each viewer runs an ffmpeg process on the host

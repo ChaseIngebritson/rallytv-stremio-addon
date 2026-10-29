@@ -1,5 +1,6 @@
 import type { MetaDetail, MetaPreview, MetaVideo } from 'stremio-addon-sdk';
 import { inspectPlaylistForDrm } from './drm';
+import { parseMasterPlaylist, pickAudioRendition, pickVideoRendition } from './hlsMaster';
 import {
   AddonConfig,
   AnonymousSession,
@@ -534,25 +535,43 @@ export async function resolvePlayableStream(
     throw new RallyError(`DRM blocked: ${drm.reason}`, 'DRM');
   }
 
-  const mediaLine = text
-    .split('\n')
-    .map((l) => l.trim())
-    .find((l) => l.startsWith('http') && l.includes('.m3u8'));
-  if (mediaLine) {
-    const media = await fetchText(mediaLine, headers);
-    if (media.ok) {
-      const mediaDrm = inspectPlaylistForDrm(media.text);
-      if (!mediaDrm.ok) {
-        throw new RallyError(`DRM blocked on media playlist: ${mediaDrm.reason}`, 'DRM');
-      }
+  const master = parseMasterPlaylist(text);
+  const video = pickVideoRendition(master.videos);
+  const audio = master.demuxed ? pickAudioRendition(master.audios, video?.audioGroup) : null;
+
+  const mediaUrls: string[] = [video?.url, audio?.url].filter((u): u is string => Boolean(u));
+  if (!mediaUrls.length) {
+    const mediaLine = text
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l.startsWith('http') && l.includes('.m3u8'));
+    if (mediaLine) mediaUrls.push(mediaLine);
+  }
+
+  for (const mediaUrl of mediaUrls) {
+    const media = await fetchText(mediaUrl, headers);
+    if (!media.ok) continue;
+    const mediaDrm = inspectPlaylistForDrm(media.text);
+    if (!mediaDrm.ok) {
+      throw new RallyError(`DRM blocked on media playlist: ${mediaDrm.reason}`, 'DRM');
     }
   }
 
-  return {
+  const playable: PlayableStream = {
     url,
     headers,
     live: productId === PRODUCTS.live,
   };
+
+  // Demuxed masters hang in Stremio — expose video(+default audio) for addon remux.
+  if (master.demuxed && video?.url) {
+    playable.remux = {
+      videoUrl: video.url,
+      audioUrl: audio?.url || null,
+    };
+  }
+
+  return playable;
 }
 
 export { USER_AGENT };

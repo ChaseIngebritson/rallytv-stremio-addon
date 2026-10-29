@@ -9,6 +9,14 @@ import {
 } from 'stremio-addon-sdk';
 import { configurePage } from './configurePage';
 import * as rally from './rallytv';
+import {
+  encodeConfigPath,
+  hasFfmpeg,
+  parseConfigPath,
+  pipeRemuxMpegTs,
+  publicBaseUrl,
+  remuxStreamUrl,
+} from './remux';
 import { AddonConfig, EventCatalogKey, isRallyError } from './types/rally';
 
 // Avoid 7000 — macOS AirPlay Receiver (ControlCenter/AirTunes) often owns it.
@@ -85,10 +93,10 @@ const EVENT_CATALOG_IDS = new Set<string>(['featured', 'upcoming', 'wrc', 'erc']
 
 const manifest: Manifest = {
   id: 'community.rallytv.personal',
-  version: '1.2.0',
+  version: '1.3.0',
   name: 'Rally.tv (Personal)',
   description:
-    'Personal addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS only.',
+    'Personal addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS; demuxed A/V remuxed for Stremio.',
   logo: 'https://res.cloudinary.com/hhhkasdw4/image/upload/f_png/streaming-platform/smarttv/rallytv/logos/logo_samsung_continue_watching.png',
   resources: ['catalog', 'meta', 'stream'],
   types: ['movie', 'tv', 'series'],
@@ -278,6 +286,44 @@ builder.defineStreamHandler(async (rawArgs) => {
 
   try {
     const playable = await rally.resolvePlayableStream(productId, config || {});
+    const cfg = config || {};
+
+    // Demuxed masters hang in Stremio — remux default audio + ~720p video to MPEG-TS.
+    if (playable.remux?.videoUrl && playable.remux.audioUrl && hasFfmpeg()) {
+      const base = publicBaseUrl(PORT);
+      const configPath = encodeConfigPath(cfg);
+      const stream = {
+        name: 'Rally.tv',
+        title: playable.live ? 'Live remux (A/V)' : 'Remuxed TS (A/V)',
+        url: remuxStreamUrl(base, productId, configPath),
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: 'rallytv-remux',
+        },
+      } as const;
+      return { streams: [stream as unknown as import('stremio-addon-sdk').Stream], cacheMaxAge: 60 };
+    }
+
+    // No ffmpeg or audio-less demux: fall back to a single video media playlist (may be silent).
+    if (playable.remux?.videoUrl) {
+      if (playable.remux.audioUrl && !hasFfmpeg()) {
+        console.warn('[stream] demuxed A/V but ffmpeg missing — returning video-only playlist');
+      }
+      const stream = {
+        name: 'Rally.tv',
+        title: playable.live ? 'Live video (no mux)' : 'HLS video (may be silent)',
+        url: playable.remux.videoUrl,
+        behaviorHints: {
+          notWebReady: true,
+          bingeGroup: 'rallytv-hls',
+          proxyHeaders: {
+            request: playable.headers,
+          },
+        },
+      } as const;
+      return { streams: [stream as unknown as import('stremio-addon-sdk').Stream], cacheMaxAge: 60 };
+    }
+
     // bingeGroup / proxyHeaders are used by Stremio but missing from @types
     const stream = {
       name: 'Rally.tv',
@@ -314,12 +360,61 @@ app.get('/configure', (_req, res) => {
   res.end(landing);
 });
 
+async function handleRemux(req: express.Request, res: express.Response): Promise<void> {
+  const productId = String(req.params.productId || '');
+  if (!/^[0-9a-f-]{36}$/i.test(productId)) {
+    res.status(400).type('text/plain').send('invalid product id');
+    return;
+  }
+
+  const configParam = req.params.config;
+  const config = parseConfigPath(Array.isArray(configParam) ? configParam[0] : configParam);
+  if (!hasFfmpeg()) {
+    res.status(503).type('text/plain').send('ffmpeg not installed on addon host');
+    return;
+  }
+
+  try {
+    const playable = await rally.resolvePlayableStream(productId, config);
+    const videoUrl = playable.remux?.videoUrl;
+    const audioUrl = playable.remux?.audioUrl || null;
+    if (!videoUrl) {
+      res.status(404).type('text/plain').send('no remuxable renditions for this title');
+      return;
+    }
+    console.log('[remux] start', productId, audioUrl ? 'A/V' : 'video-only');
+    pipeRemuxMpegTs({
+      videoUrl,
+      audioUrl,
+      headers: playable.headers,
+      req,
+      res,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[remux]', message);
+    if (!res.headersSent) {
+      res.status(502).type('text/plain').send(message);
+    }
+  }
+}
+
+// Must be registered before the SDK router so /:config/... is not swallowed.
+app.get('/remux/:productId/stream.ts', (req, res) => {
+  void handleRemux(req, res);
+});
+app.get('/:config/remux/:productId/stream.ts', (req, res) => {
+  void handleRemux(req, res);
+});
+
 // Stremio protocol: /:config?/manifest.json and catalog/meta/stream routes
 app.use(getRouter(addonInterface));
 
 app.listen(PORT, () => {
   console.log(`Rally.tv Stremio addon listening on :${PORT}`);
   console.log(`Configure (get token-aware manifest): http://127.0.0.1:${PORT}/configure`);
+  console.log(`ffmpeg remux: ${hasFfmpeg() ? 'available' : 'MISSING — demuxed titles fall back to video-only'}`);
+  console.log(`Public base URL: ${publicBaseUrl(PORT)}`);
 });
 
 export { addonInterface, app };

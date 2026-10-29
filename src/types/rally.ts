@@ -132,6 +132,14 @@ export interface PlayableStream {
   url: string;
   headers: Record<string, string>;
   live: boolean;
+  /**
+   * When the master is demuxed (separate AUDIO renditions), Stremio cannot play it.
+   * Prefer addon-side ffmpeg remux of these media playlists into MPEG-TS.
+   */
+  remux?: {
+    videoUrl: string;
+    audioUrl: string | null;
+  };
 }
 
 export class RallyError extends Error {

@@ -1,0 +1,3 @@
+# Railway/Nixpacks: ffmpeg is required to remux demuxed Rally.tv HLS (separate A/V) for Stremio.
+[phases.setup]
+nixPkgs = ["ffmpeg"]
