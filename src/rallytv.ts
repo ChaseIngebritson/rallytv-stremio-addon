@@ -455,13 +455,122 @@ export async function buildEventSeriesMeta(
     .filter(Boolean)
     .join('\n\n');
 
+  const eventStart = dynamic?.start_time || product.start_time;
+  const hasScheduledVideos = videos.some((v) => isCalendarReleased(v.released));
+
   return {
     ...preview,
     type: 'series',
     description,
     videos,
+    released: eventStart || undefined,
     website: product.share_url || `https://www.rally.tv/en/page/${pageId}`,
-  };
+    // Stremio calendar / UPCOMING badge (undocumented; American spelling)
+    behaviorHints: hasScheduledVideos ? { hasScheduledVideos: true } : undefined,
+  } as MetaDetail;
+}
+
+/** True when `released` is a real air date (not the epoch fallback used when Rally omits start_time). */
+export function isCalendarReleased(released: string | undefined | null): boolean {
+  if (!released) return false;
+  const t = Date.parse(released);
+  return Number.isFinite(t) && t > Date.UTC(1970, 0, 2);
+}
+
+/**
+ * When Rally hasn't published a timed Schedule yet, place one calendar entry per UTC day
+ * between event start and end so the weekend still shows in Stremio Calendar.
+ */
+function synthesizeEventWeekendVideos(
+  pageId: string,
+  title: string,
+  startIso: string,
+  endIso?: string,
+): MetaVideo[] {
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return [];
+  const endMs = endIso ? Date.parse(endIso) : startMs;
+  const end = Number.isFinite(endMs) ? endMs : startMs;
+
+  const cursor = new Date(startMs);
+  cursor.setUTCHours(0, 0, 0, 0);
+  const last = new Date(end);
+  last.setUTCHours(0, 0, 0, 0);
+
+  // Guard runaway ranges (bad API data)
+  const maxDays = 14;
+  const videos: MetaVideo[] = [];
+  let day = 0;
+  while (cursor.getTime() <= last.getTime() && day < maxDays) {
+    day += 1;
+    const released = new Date(cursor);
+    // Keep the first day's clock from the real start_time; later days at noon UTC
+    if (day === 1) {
+      released.setTime(startMs);
+    } else {
+      released.setUTCHours(12, 0, 0, 0);
+    }
+    const dateLabel = cursor.toISOString().slice(0, 10);
+    videos.push({
+      id: `${toMetaId(pageId)}:cal:${dateLabel}`,
+      title: day === 1 ? title : `${title} — Day ${day}`,
+      season: 0,
+      episode: day,
+      released: released.toISOString(),
+      overview: 'Rally weekend (detailed stage times publish closer to the event)',
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return videos;
+}
+
+/**
+ * Stremio Calendar batches library series IDs via catalog extra `calendarVideosIds`.
+ * Return full metas with dated videos only (keeps payloads small; calendar keys off `released`).
+ */
+export async function buildCalendarMetasDetailed(
+  metaIds: string[],
+  config: AddonConfig = {},
+): Promise<MetaDetail[]> {
+  const unique = [...new Set(metaIds.map((id) => id.trim()).filter(Boolean))];
+  const results = await Promise.all(
+    unique.map(async (metaId) => {
+      const productId = parseId(metaId);
+      if (!productId) return null;
+      try {
+        const meta = await buildEventSeriesMeta(productId, config);
+        let videos = (meta.videos || []).filter((v) => isCalendarReleased(v.released));
+
+        // Upcoming rallies often have no Schedule rail yet — fall back to event dates.
+        if (!videos.length && meta.released && isCalendarReleased(meta.released)) {
+          const dynamic = await getDynamicProduct(productId, config).catch(() => null);
+          const start = dynamic?.start_time || meta.released;
+          videos = synthesizeEventWeekendVideos(
+            productId,
+            meta.name || 'Rally event',
+            start,
+            dynamic?.end_time,
+          );
+        }
+
+        if (!videos.length) return null;
+        videos.sort(
+          (a, b) =>
+            Date.parse(a.released) - Date.parse(b.released) || (a.episode || 0) - (b.episode || 0),
+        );
+        return {
+          ...meta,
+          videos,
+          behaviorHints: { hasScheduledVideos: true },
+        } as MetaDetail;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[rallytv] calendar meta failed', metaId, message);
+        return null;
+      }
+    }),
+  );
+  return results.filter((m): m is MetaDetail => Boolean(m));
 }
 
 /** Resolve Events-hub collection IDs by label (Calendar Featured, Past WRC, …). */

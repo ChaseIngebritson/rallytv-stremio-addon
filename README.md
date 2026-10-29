@@ -1,8 +1,8 @@
-# Rally.tv → Stremio (personal)
+# Rally.tv → Stremio
 
-Personal LAN Stremio addon that catalogs Rally.tv content and plays **clear HLS** using the official Red Bull / Rally.tv play service. Demuxed (separate audio/video) playlists are **remuxed** via ffmpeg into MPEG-TS so Stremio can play them.
+Stremio addon that catalogs Rally.tv content and plays **clear HLS** using the official Red Bull / Rally.tv play service. Demuxed (separate audio/video) playlists are **remuxed** via ffmpeg into MPEG-TS so Stremio can play them.
 
-**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Personal use with your own subscription only. May conflict with Rally.tv Terms of Service. Do not redistribute or host publicly.
+**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Use with your own subscription only. May conflict with Rally.tv Terms of Service. Do not redistribute or host publicly.
 
 ## DRM policy
 
@@ -19,7 +19,21 @@ Stremio cannot play Widevine/FairPlay. This addon:
 - Stremio Desktop (or another client that can install a local addon URL)
 - Optional: Rally.tv account (email OTP) if play starts requiring auth
 
-## Install / run
+## Production
+
+| | |
+|---|---|
+| **Host** | https://rallytv-stremio-addon-production.up.railway.app |
+| **Configure** | https://rallytv-stremio-addon-production.up.railway.app/configure |
+| **Manifest** | https://rallytv-stremio-addon-production.up.railway.app/manifest.json |
+
+**Install in Stremio:** [stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json](stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json)
+
+Or in Stremio → Addons → Community Addons → Install from URL → paste the HTTPS manifest above.
+
+> Configuration is required for a private Auth0 token. Prefer the [configure page](https://rallytv-stremio-addon-production.up.railway.app/configure) to paste your token and get a configured install URL (see below).
+
+## Install / run (local)
 
 ```bash
 cd ~/Code/rallytv-stremio-addon
@@ -58,9 +72,9 @@ Other devices on your LAN: use your machine’s LAN IP instead of `127.0.0.1` (f
 Rally.tv login is **email one-time code**, not a password.
 
 1. Log into https://www.rally.tv and copy the Auth0 access token (see `npm run login-helper`)
-2. Open the configure page: `https://YOUR-HOST/configure` (local: `http://127.0.0.1:3000/configure`)
+2. Open the configure page: [production](https://rallytv-stremio-addon-production.up.railway.app/configure) or local `http://127.0.0.1:3000/configure`
 3. Paste the token, then **Copy HTTPS manifest** / **Install in Stremio**
-4. Install that **configured** URL (it looks like `https://YOUR-HOST/%7B%22authToken%22...%7D/manifest.json`) — not the bare `/manifest.json`
+4. Install that **configured** URL (it looks like `https://…/%7B%22authToken%22…%7D/manifest.json`) — not the bare `/manifest.json`
 
 Anonymous device sessions for search are still obtained automatically. Renew the Auth0 token and reinstall the configured URL when it expires.
 
@@ -78,8 +92,17 @@ Structured like the Rally.tv Events hub. Opening a rally loads the full page rai
 | Stage Replays | Search `Full Stage Replay` |
 | Highlights | Search `Highlights` |
 | Rally.tv Search | Stremio search (events + videos) |
+| Calendar videos | Stremio Calendar (batched library IDs; not shown in Discover) |
 
 Event detail uses `tv-api.redbull.com` products + collections (same payload as [rally.tv event pages](https://www.rally.tv/en/page/a70781d8-b56e-4a5f-9f0b-83e83659933e)).
+
+### Stremio Calendar
+
+Add a rally event (series) to your **Library**. Stremio’s Calendar page then requests schedule items via the `calendar-videos` catalog.
+
+- When Rally publishes a timed **Schedule** rail, stages/sessions appear on their air dates.
+- Before a schedule exists, the addon places one entry per day of the event weekend from Rally’s start/end times.
+- Undated VOD (highlights, replays without `start_time`) is omitted from the calendar.
 
 ## Spike scripts
 

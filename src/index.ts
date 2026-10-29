@@ -27,7 +27,13 @@ const PORT = Number(process.env.PORT || 3000);
 interface HandlerArgs {
   type: ContentType;
   id: string;
-  extra?: { search?: string; genre?: string; skip?: number };
+  extra?: {
+    search?: string;
+    genre?: string;
+    skip?: number;
+    /** Comma-separated library meta IDs from Stremio Calendar */
+    calendarVideosIds?: string;
+  };
   config?: AddonConfig;
 }
 
@@ -83,6 +89,20 @@ const CATALOGS: ManifestCatalog[] = [
       { name: 'skip', isRequired: false },
     ],
   },
+  // Hidden from Discover (extra is required). Stremio Calendar batches library IDs here.
+  {
+    id: 'calendar-videos',
+    type: 'series',
+    name: 'Calendar videos',
+    // calendarVideosIds is used by Stremio Calendar but missing from SDK Extra typings
+    extra: [
+      {
+        name: 'calendarVideosIds' as import('stremio-addon-sdk').Extra,
+        isRequired: true,
+        optionsLimit: 100,
+      },
+    ],
+  },
 ];
 
 const SEARCH_QUERIES: Record<string, string> = {
@@ -93,11 +113,11 @@ const SEARCH_QUERIES: Record<string, string> = {
 const EVENT_CATALOG_IDS = new Set<string>(['featured', 'upcoming', 'wrc', 'erc']);
 
 const manifest: Manifest = {
-  id: 'community.rallytv.personal',
-  version: '1.3.0',
-  name: 'Rally.tv (Personal)',
+  id: 'community.rallytv',
+  version: '1.4.0',
+  name: 'Rally.tv',
   description:
-    'Personal addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS; demuxed A/V remuxed for Stremio.',
+    'Stremio addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS; demuxed A/V remuxed for Stremio. WRC schedule appears in Stremio Calendar when events are in your library.',
   logo: 'https://res.cloudinary.com/hhhkasdw4/image/upload/f_png/streaming-platform/smarttv/rallytv/logos/logo_samsung_continue_watching.png',
   resources: ['catalog', 'meta', 'stream'],
   types: ['movie', 'tv', 'series'],
@@ -145,6 +165,23 @@ builder.defineCatalogHandler(async (rawArgs) => {
         metas: [rally.liveChannelMeta()],
         cacheMaxAge: 300,
       };
+    }
+
+    // Stremio Calendar: /catalog/series/calendar-videos/calendarVideosIds=id1,id2.json
+    if (id === 'calendar-videos' && type === 'series') {
+      const rawIds = extra?.calendarVideosIds || '';
+      const ids = String(rawIds)
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.startsWith(rally.ID_PREFIX));
+      if (!ids.length) {
+        return { metasDetailed: [], cacheMaxAge: 300 } as unknown as { metas: MetaDetail[] };
+      }
+      const metasDetailed = await rally.buildCalendarMetasDetailed(ids, config || {});
+      return {
+        metasDetailed,
+        cacheMaxAge: 600,
+      } as unknown as { metas: MetaDetail[] };
     }
 
     if (EVENT_CATALOG_IDS.has(id) && type === 'series') {

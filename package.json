@@ -1,7 +1,7 @@
 {
   "name": "rallytv-stremio-addon",
-  "version": "1.3.0",
-  "description": "Personal Stremio addon for Rally.tv (clear HLS; remux demuxed A/V)",
+  "version": "1.4.0",
+  "description": "Stremio addon for Rally.tv (clear HLS; remux demuxed A/V)",
   "main": "src/index.ts",
   "type": "commonjs",
   "scripts": {
