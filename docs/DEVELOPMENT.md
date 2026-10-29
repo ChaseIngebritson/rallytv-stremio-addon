@@ -5,7 +5,7 @@ Local setup, remux internals, and maintainer notes. For install and day-to-day u
 ## Requirements
 
 - Node.js 18+
-- **ffmpeg** on PATH (Railway installs via `nixpacks.toml`; locally `brew install ffmpeg`). `ffmpeg-static` is a last-resort fallback and can crash on Linux HLS remux.
+- **ffmpeg** on PATH (Railway installs via `railpack.json`; locally `brew install ffmpeg`). `ffmpeg-static` is a last-resort fallback and can crash on Linux HLS remux.
 - Stremio Desktop (or another client that can install a local addon URL)
 - Optional: Rally.tv account (email OTP) if play requires auth
 
@@ -52,6 +52,10 @@ Anonymous device sessions for search are obtained automatically. Renew the Auth0
 See [.env.example](../.env.example) for script-only overrides (`PORT`, `RALLYTV_AUTH_TOKEN`, locale/country, `ADDON_BASE_URL`). Stremio user data is configured in the addon settings UI and encoded into the install URL.
 
 Set `ADDON_BASE_URL` if the auto-detected public URL is wrong (Railway uses `RAILWAY_PUBLIC_DOMAIN`).
+
+## Railway
+
+Infrastructure is defined in [`.railway/railway.ts`](../.railway/railway.ts) (Railpack builder, start command, healthcheck, restart policy, optional env). System `ffmpeg` comes from [`railpack.json`](../railpack.json). Preview/apply with `npx railway config plan` / `npx railway config apply` — see [`.railway/README.md`](../.railway/README.md).
 
 ## DRM policy
 

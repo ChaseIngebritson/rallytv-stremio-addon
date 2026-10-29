@@ -1,4 +1,0 @@
-# System ffmpeg is required: ffmpeg-static segfaults remuxing Rally HLS on Railway (SIGSEGV).
-# Include nodejs explicitly so listing nixPkgs does not drop the Node provider.
-[phases.setup]
-nixPkgs = ["nodejs_22", "ffmpeg"]

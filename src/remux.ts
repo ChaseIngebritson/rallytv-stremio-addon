@@ -9,7 +9,7 @@ import { parseMediaPlaylist, type ParsedMediaPlaylist } from './hlsMedia';
 let resolvedFfmpeg: string | null | undefined;
 
 /**
- * Prefer system `ffmpeg` (Nixpacks/apt/brew) over ffmpeg-static.
+ * Prefer system `ffmpeg` (Railpack apt / brew) over ffmpeg-static.
  * ffmpeg-static has been observed to SIGSEGV remuxing Rally HLS on Railway Linux.
  */
 export function resolveFfmpegPath(): string | null {

@@ -8,7 +8,7 @@ Watch Rally.tv live TV, stage replays, highlights, and event schedules in [Strem
 
 Host your own private instance (recommended on [Railway](https://railway.com)):
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/jaidtL?utm_medium=integration&utm_source=button&utm_campaign=rallytv-stremio-addon)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template/rallytv-stremio-addon?utm_medium=integration&utm_source=button&utm_campaign=rallytv-stremio-addon)
 
 After deploy:
 

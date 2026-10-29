@@ -29,6 +29,7 @@
     "@types/ffmpeg-static": "^3.0.3",
     "@types/node": "^25.7.0",
     "@types/stremio-addon-sdk": "^1.6.12",
+    "railway": "^3.16.0",
     "typescript": "^5.9.3"
   }
 }
