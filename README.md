@@ -98,11 +98,13 @@ Event detail uses `tv-api.redbull.com` products + collections (same payload as [
 
 ### Stremio Calendar
 
-Add a rally event (series) to your **Library**. Stremio’s Calendar page then requests schedule items via the `calendar-videos` catalog.
+Stremio’s Calendar **only shows series in your Library** (not Discover catalogs).
 
-- When Rally publishes a timed **Schedule** rail, stages/sessions appear on their air dates.
-- Before a schedule exists, the addon places one entry per day of the event weekend from Rally’s start/end times.
-- Undated VOD (highlights, replays without `start_time`) is omitted from the calendar.
+1. Open **Featured Events** or **Upcoming Events**
+2. Open **WRC & Rally Calendar** (pinned at the top) → **Add to Library**
+3. Open Calendar (signed in) and jump to the event month (e.g. January 2027 for Monte-Carlo)
+
+You can also Library individual rally events. When Rally publishes a timed Schedule rail, stages appear on those air dates; otherwise the addon uses the event weekend start/end.
 
 ## Spike scripts
 

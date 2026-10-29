@@ -31,6 +31,20 @@ export const PRODUCTS = {
   search: 'd7cc4789-db63-5cd1-8d3f-7aece4d36ce6',
 } as const;
 
+/**
+ * Synthetic series: add once to Stremio Library to populate Calendar with
+ * Featured + Upcoming rally weekends (Stremio Calendar only loads library IDs).
+ */
+export const SEASON_CALENDAR_ID = 'season-calendar';
+
+export function seasonCalendarMetaId(): string {
+  return toMetaId(SEASON_CALENDAR_ID);
+}
+
+export function isSeasonCalendarId(productId: string | null | undefined): boolean {
+  return productId === SEASON_CALENDAR_ID;
+}
+
 /** Collection labels on the Events hub we surface as Stremio catalogs */
 export const EVENT_CATALOG_COLLECTIONS: Record<EventCatalogKey, string> = {
   featured: 'Calendar Featured',
@@ -524,6 +538,77 @@ function synthesizeEventWeekendVideos(
   return videos;
 }
 
+/** Preview card for Discover — pin at the top of Featured / Upcoming. */
+export function seasonCalendarPreview(): CatalogMeta {
+  return {
+    id: seasonCalendarMetaId(),
+    type: 'series',
+    name: 'WRC & Rally Calendar',
+    poster: resourceUrl(PRODUCTS.events, 'rbtv_display_art_landscape'),
+    posterShape: 'landscape',
+    background: resourceUrl(PRODUCTS.events, 'rbtv_background_landscape'),
+    description:
+      'Add this to your Library to show Featured + Upcoming rally weekends on the Stremio Calendar page.',
+    releaseInfo: `${new Date().getUTCFullYear()}-`,
+    genres: ['Motorsport', 'WRC', 'Rally'],
+  };
+}
+
+/**
+ * Aggregated series meta: one video per day of each Featured/Upcoming event weekend.
+ * Uses dynamic start/end only (fast) so Calendar requests stay within client timeouts.
+ */
+export async function buildSeasonCalendarMeta(config: AddonConfig = {}): Promise<MetaDetail> {
+  const [featured, upcoming] = await Promise.all([
+    listEventCatalog('featured', config),
+    listEventCatalog('upcoming', config),
+  ]);
+  const seen = new Set<string>();
+  const previews = [...featured, ...upcoming].filter((p) => {
+    if (seen.has(p.id)) return false;
+    seen.add(p.id);
+    return true;
+  });
+
+  const batches = await Promise.all(
+    previews.map(async (preview) => {
+      const productId = parseId(preview.id);
+      if (!productId) return [] as MetaVideo[];
+      try {
+        const dynamic = await getDynamicProduct(productId, config);
+        const start = dynamic?.start_time;
+        if (!start || !isCalendarReleased(start)) return [] as MetaVideo[];
+        return synthesizeEventWeekendVideos(
+          productId,
+          preview.name || 'Rally event',
+          start,
+          dynamic?.end_time,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[rallytv] season calendar event failed', preview.id, message);
+        return [] as MetaVideo[];
+      }
+    }),
+  );
+
+  const videos = batches
+    .flat()
+    .sort((a, b) => Date.parse(a.released) - Date.parse(b.released))
+    .map((v, i) => ({
+      ...v,
+      season: new Date(v.released).getUTCFullYear() || new Date().getUTCFullYear(),
+      episode: i + 1,
+    }));
+
+  return {
+    ...seasonCalendarPreview(),
+    type: 'series',
+    videos,
+    behaviorHints: { hasScheduledVideos: true },
+  } as MetaDetail;
+}
+
 /**
  * Stremio Calendar batches library series IDs via catalog extra `calendarVideosIds`.
  * Return full metas with dated videos only (keeps payloads small; calendar keys off `released`).
@@ -538,6 +623,11 @@ export async function buildCalendarMetasDetailed(
       const productId = parseId(metaId);
       if (!productId) return null;
       try {
+        if (isSeasonCalendarId(productId)) {
+          const season = await buildSeasonCalendarMeta(config);
+          return season.videos?.length ? season : null;
+        }
+
         const meta = await buildEventSeriesMeta(productId, config);
         let videos = (meta.videos || []).filter((v) => isCalendarReleased(v.released));
 

@@ -94,7 +94,7 @@ const CATALOGS: ManifestCatalog[] = [
     id: 'calendar-videos',
     type: 'series',
     name: 'Calendar videos',
-    // calendarVideosIds is used by Stremio Calendar but missing from SDK Extra typings
+    // Match Cinemeta: modern `extra` + legacy extraSupported/extraRequired
     extra: [
       {
         name: 'calendarVideosIds' as import('stremio-addon-sdk').Extra,
@@ -102,7 +102,11 @@ const CATALOGS: ManifestCatalog[] = [
         optionsLimit: 100,
       },
     ],
-  },
+    ...({
+      extraSupported: ['calendarVideosIds'],
+      extraRequired: ['calendarVideosIds'],
+    } as object),
+  } as ManifestCatalog,
 ];
 
 const SEARCH_QUERIES: Record<string, string> = {
@@ -114,10 +118,10 @@ const EVENT_CATALOG_IDS = new Set<string>(['featured', 'upcoming', 'wrc', 'erc']
 
 const manifest: Manifest = {
   id: 'community.rallytv',
-  version: '1.4.0',
+  version: '1.4.1',
   name: 'Rally.tv',
   description:
-    'Stremio addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS; demuxed A/V remuxed for Stremio. WRC schedule appears in Stremio Calendar when events are in your library.',
+    'Stremio addon for Rally.tv. Configure with your Auth0 token to get a private install URL. Events, stage replays, highlights. Clear HLS; demuxed A/V remuxed for Stremio. Add “WRC & Rally Calendar” to your Library for Stremio Calendar.',
   logo: 'https://res.cloudinary.com/hhhkasdw4/image/upload/f_png/streaming-platform/smarttv/rallytv/logos/logo_samsung_continue_watching.png',
   resources: ['catalog', 'meta', 'stream'],
   types: ['movie', 'tv', 'series'],
@@ -170,14 +174,21 @@ builder.defineCatalogHandler(async (rawArgs) => {
     // Stremio Calendar: /catalog/series/calendar-videos/calendarVideosIds=id1,id2.json
     if (id === 'calendar-videos' && type === 'series') {
       const rawIds = extra?.calendarVideosIds || '';
-      const ids = String(rawIds)
+      const allIds = String(rawIds)
         .split(',')
         .map((s) => s.trim())
-        .filter((s) => s.startsWith(rally.ID_PREFIX));
+        .filter(Boolean);
+      const ids = allIds.filter((s) => s.startsWith(rally.ID_PREFIX));
+      console.log(
+        `[catalog] calendarVideosIds total=${allIds.length} rallytv=${ids.length}`,
+        ids.slice(0, 5),
+      );
       if (!ids.length) {
+        // No Rally.tv series in library — Calendar will stay empty for this addon.
         return { metasDetailed: [], cacheMaxAge: 300 } as unknown as { metas: MetaDetail[] };
       }
       const metasDetailed = await rally.buildCalendarMetasDetailed(ids, config || {});
+      console.log(`[catalog] calendar metasDetailed=${metasDetailed.length}`);
       return {
         metasDetailed,
         cacheMaxAge: 600,
@@ -185,9 +196,12 @@ builder.defineCatalogHandler(async (rawArgs) => {
     }
 
     if (EVENT_CATALOG_IDS.has(id) && type === 'series') {
-      const metas = await rally.listEventCatalog(id as EventCatalogKey, config || {}, {
-        skip: Number(extra?.skip) || 0,
-      });
+      const skip = Number(extra?.skip) || 0;
+      const metas = await rally.listEventCatalog(id as EventCatalogKey, config || {}, { skip });
+      // Pin season calendar at the top of Featured / Upcoming so users can Library it once.
+      if (skip === 0 && (id === 'featured' || id === 'upcoming')) {
+        return { metas: [rally.seasonCalendarPreview(), ...metas], cacheMaxAge: 600 };
+      }
       return { metas, cacheMaxAge: 600 };
     }
 
@@ -240,6 +254,11 @@ builder.defineMetaHandler(async (rawArgs) => {
   }
 
   try {
+    if (rally.isSeasonCalendarId(productId)) {
+      const meta = await rally.buildSeasonCalendarMeta(config || {});
+      return { meta, cacheMaxAge: 600 };
+    }
+
     if (type === 'series') {
       const meta = await rally.buildEventSeriesMeta(productId, config || {});
       return { meta, cacheMaxAge: 600 };
