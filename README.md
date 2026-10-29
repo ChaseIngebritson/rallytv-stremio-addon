@@ -1,143 +1,64 @@
-# Rally.tv → Stremio
+# Rally.tv for Stremio
 
-Stremio addon that catalogs Rally.tv content and plays **clear HLS** using the official Red Bull / Rally.tv play service. Demuxed (separate audio/video) playlists are **remuxed** via ffmpeg into MPEG-TS so Stremio can play them.
+Watch Rally.tv live TV, stage replays, highlights, and event schedules in [Stremio](https://www.stremio.com/).
 
-**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Use with your own subscription only. May conflict with Rally.tv Terms of Service. Do not redistribute or host publicly.
+**Not affiliated with Rally.tv, WRC Promoter, or Red Bull.** Use with your own subscription only. This may conflict with Rally.tv’s Terms of Service — do not redistribute or host a public copy.
 
-## DRM policy
+## Install
 
-Stremio cannot play Widevine/FairPlay. This addon:
+**One-click:** [Install in Stremio](stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json)
 
-- Fetches the master (and first media) playlist before returning a stream
-- **Refuses** anything with `EXT-X-KEY`, SAMPLE-AES, Widevine, or FairPlay signaling
-- Spike result (2026-10-29): Live 24/7 + sample entitled stage replays were **clear HLS** — see [docs/api-notes.md](docs/api-notes.md)
+Or in Stremio → **Addons** → **Community Addons** → **Install from URL**, paste:
 
-## Requirements
-
-- Node.js 18+
-- **ffmpeg** on PATH (Railway installs via `nixpacks.toml`; locally `brew install ffmpeg`). `ffmpeg-static` is a last-resort fallback and can crash on Linux HLS remux.
-- Stremio Desktop (or another client that can install a local addon URL)
-- Optional: Rally.tv account (email OTP) if play starts requiring auth
-
-## Production
+```
+https://rallytv-stremio-addon-production.up.railway.app/manifest.json
+```
 
 | | |
 |---|---|
-| **Host** | https://rallytv-stremio-addon-production.up.railway.app |
-| **Configure** | https://rallytv-stremio-addon-production.up.railway.app/configure |
-| **Manifest** | https://rallytv-stremio-addon-production.up.railway.app/manifest.json |
+| Configure | https://rallytv-stremio-addon-production.up.railway.app/configure |
+| Manifest | https://rallytv-stremio-addon-production.up.railway.app/manifest.json |
 
-**Install in Stremio:** [stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json](stremio://rallytv-stremio-addon-production.up.railway.app/manifest.json)
+## Sign in (recommended)
 
-Or in Stremio → Addons → Community Addons → Install from URL → paste the HTTPS manifest above.
+Many titles need a Rally.tv subscription. Login is **email OTP** (no password).
 
-> Configuration is required for a private Auth0 token. Prefer the [configure page](https://rallytv-stremio-addon-production.up.railway.app/configure) to paste your token and get a configured install URL (see below).
+1. Log into [rally.tv](https://www.rally.tv) in a browser
+2. Open the [configure page](https://rallytv-stremio-addon-production.up.railway.app/configure) and paste your Auth0 access token  
+   *(tip: run `npm run login-helper` locally if you need help finding it)*
+3. Use **Install in Stremio** / **Copy HTTPS manifest** — install that configured URL, not the bare `/manifest.json`
 
-## Install / run (local)
+When the token expires, paste a fresh one and reinstall the configured URL.
 
-```bash
-cd ~/Code/rallytv-stremio-addon
-npm install
-npm run start:daemon   # keeps running in the background
-```
+## What’s included
 
-Or foreground (terminal must stay open):
-
-```bash
-npm start              # tsx runs TypeScript directly
-npm run typecheck      # tsc --noEmit
-npm run build          # emit dist/ (optional; Railway/prod)
-```
-
-Then open in a browser to confirm it’s alive:
-
-```
-http://127.0.0.1:3000/
-http://127.0.0.1:3000/manifest.json
-```
-
-In Stremio → Addons → install from URL:
-
-```
-http://127.0.0.1:3000/manifest.json
-```
-
-> **Note:** Default port is **3000**. Avoid `7000` — macOS AirPlay Receiver often owns it (HTTP 403).  
-> If the browser shows connection refused, the Node process is not running — use `npm start` (leave the terminal open) or `npm run start:daemon`. Stop with `npm run stop`.
-
-Other devices on your LAN: use your machine’s LAN IP instead of `127.0.0.1` (firewall permitting).
-
-### Auth0 token → configured manifest
-
-Rally.tv login is **email one-time code**, not a password.
-
-1. Log into https://www.rally.tv and copy the Auth0 access token (see `npm run login-helper`)
-2. Open the configure page: [production](https://rallytv-stremio-addon-production.up.railway.app/configure) or local `http://127.0.0.1:3000/configure`
-3. Paste the token, then **Copy HTTPS manifest** / **Install in Stremio**
-4. Install that **configured** URL (it looks like `https://…/%7B%22authToken%22…%7D/manifest.json`) — not the bare `/manifest.json`
-
-Anonymous device sessions for search are still obtained automatically. Renew the Auth0 token and reinstall the configured URL when it expires.
-
-## Catalogs
-
-Structured like the Rally.tv Events hub. Opening a rally loads the full page rails (Schedule, Full Stage Replays, highlights, clips, …) as series seasons.
-
-| Catalog | Source |
+| Catalog | Contents |
 |---|---|
-| Live TV | Fixed 24/7 channel product |
-| Featured Events | Events hub → Calendar Featured |
-| Upcoming Events | Events hub → Upcoming Events |
-| Past WRC Events | Events hub → Past WRC Events |
-| Past ERC Events | Events hub → Past ERC Events |
-| Stage Replays | Search `Full Stage Replay` |
-| Highlights | Search `Highlights` |
-| Rally.tv Search | Stremio search (events + videos) |
-| Calendar videos | Stremio Calendar (batched library IDs; not shown in Discover) |
+| Live TV | 24/7 Rally.tv channel |
+| Featured / Upcoming / Past Events | Events hub (WRC & ERC) |
+| Stage Replays | Full stage replays |
+| Highlights | Event highlights |
+| Rally.tv Search | Search events and videos |
+| Calendar | Timed stages once events are in your Library |
 
-Event detail uses `tv-api.redbull.com` products + collections (same payload as [rally.tv event pages](https://www.rally.tv/en/page/a70781d8-b56e-4a5f-9f0b-83e83659933e)).
+Opening a rally loads its page rails (Schedule, Full Stage Replays, highlights, clips, …) as seasons.
 
-### Stremio Calendar
+### Calendar tip
 
-Stremio’s Calendar **only shows series in your Library** (not Discover catalogs).
+Stremio’s Calendar only shows series you’ve **added to Library**.
 
 1. Open **Featured Events** or **Upcoming Events**
 2. Open **WRC & Rally Calendar** (pinned at the top) → **Add to Library**
-3. Open Calendar (signed in) and jump to the event month (e.g. January 2027 for Monte-Carlo)
+3. Open Calendar (signed in) and jump to the event month
 
-You can also Library individual rally events. When Rally publishes a timed Schedule rail, stages appear on those air dates; otherwise the addon uses the event weekend start/end.
-
-## Spike scripts
-
-```bash
-npm run inspect              # session + search + live/VOD DRM check
-npm run inspect -- "onboard"
-npm run login-helper
-npm run login-helper -- --check
-```
-
-## Configuration
-
-See [.env.example](.env.example) for script-only env vars (`PORT`, `RALLYTV_AUTH_TOKEN`, locale/country). Stremio user data is configured in the addon settings UI and encoded into the install URL by Stremio.
-
-## Playback / remux
-
-Many Rally.tv titles serve a **demuxed** HLS master (separate video + audio renditions). Stremio hangs on that shape.
-
-When ffmpeg is available (`ffmpeg-static` or system binary), the stream handler returns an addon remux URL:
-
-| Content | URL | Behavior |
-|---|---|---|
-| **VOD** | `/remux/{productId}/index.m3u8` | Muxed HLS with on-demand A/V segments — **seekable**, full duration |
-| **Live** | `/remux/{productId}/stream.ts` | Progressive MPEG-TS pipe (live; no scrubbing) |
-
-Configured installs use `/{config}/remux/...`. Set `ADDON_BASE_URL` if the auto-detected public URL is wrong (Railway uses `RAILWAY_PUBLIC_DOMAIN`).
-
-Without ffmpeg, demuxed titles fall back to a **video-only** media playlist (often silent).
+You can also Library individual rallies. When Rally publishes a Schedule rail, stages appear on those air dates; otherwise the addon uses the event weekend.
 
 ## Limitations
 
-- Legacy `api.redbull.tv/v3/products/{id}` returns 404; events use **tv-api** `products/v5.2` + `collections/v5.2`
-- Stremio’s season picker always says “Season N”; Rally.tv rail names (Schedule, Full Stage Replays, …) are prefixed on episode titles, listed as Seasons links, and included in the `seasons` meta field
-- Entitlement enforcement may tighten later — keep an Auth0 token ready
-- If Rally.tv enables DRM on an asset, that title will simply have **no playable stream**
-- VOD remux runs ffmpeg per HLS segment (cached briefly); heavy seeking still costs CPU on the host
+- Stremio cannot play DRM (Widevine / FairPlay). If Rally.tv enables DRM on a title, it won’t be playable here.
+- Season labels in Stremio always say “Season N”; rail names (Schedule, Full Stage Replays, …) are shown on episode titles instead.
+- Entitlement rules can change — keep a valid Auth0 token handy.
+
+## Self-hosting & development
+
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for local setup, remux details, env vars, and spike scripts.
