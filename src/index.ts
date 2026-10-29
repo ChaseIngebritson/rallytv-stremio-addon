@@ -415,6 +415,9 @@ const landing = configurePage(manifest);
 app.get('/', (_req, res) => {
   res.redirect(302, '/configure');
 });
+app.get('/health', (_req, res) => {
+  res.status(200).type('text/plain').send('ok');
+});
 app.get('/configure', (_req, res) => {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.end(landing);
