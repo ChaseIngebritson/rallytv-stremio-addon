@@ -1,8 +1,9 @@
 [build]
 builder = "NIXPACKS"
+buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node src/index.js"
+startCommand = "node dist/src/index.js"
 healthcheckPath = "/manifest.json"
 healthcheckTimeout = 30
 restartPolicyType = "ON_FAILURE"
