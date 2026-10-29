@@ -401,7 +401,13 @@ function shouldIncludeCollection(col: RallyCollection | null): col is RallyColle
   return playable.length > 0;
 }
 
-function cardToVideoEntry(card: RallyEntity, season: number, episode: number): MetaVideo {
+function cardToVideoEntry(
+  card: RallyEntity,
+  season: number,
+  episode: number,
+  fallbackReleased?: string,
+  railLabel?: string,
+): MetaVideo {
   rememberItem(card);
   const badge = (card.badges || [])
     .map((b) => b.value)
@@ -413,13 +419,21 @@ function cardToVideoEntry(card: RallyEntity, season: number, episode: number): M
     [runtime, badge, card.short_description, card.subheading].filter(Boolean).join(' — ') ||
     undefined;
   const baseTitle = card.title || `Episode ${episode}`;
+  // Stremio's season picker only shows "Season N" — prefix with the Rally.tv rail
+  // label (Schedule, Full Stage Replays, …) so section names stay visible.
+  const labeled =
+    railLabel && !baseTitle.toLowerCase().startsWith(railLabel.toLowerCase())
+      ? `${railLabel} — ${baseTitle}`
+      : baseTitle;
+  // Prefer the card air time (Schedule). VOD rails omit start_time — use the event
+  // weekend start so Stremio does not render Unix epoch as 1969-12-31.
+  const released = card.start_time || fallbackReleased || new Date(0).toISOString();
   return {
     id: toMetaId(card.id),
-    title: runtime ? `${baseTitle} (${runtime})` : baseTitle,
+    title: runtime ? `${labeled} (${runtime})` : labeled,
     season,
     episode,
-    // MetaVideo typings require released; fall back when schedule has no start_time
-    released: card.start_time || new Date(0).toISOString(),
+    released,
     thumbnail:
       mediaUrl(card, 'rbtv_display_art_landscape') || resourceUrl(card.id, 'rbtv_display_art_landscape'),
     overview,
@@ -452,26 +466,32 @@ export async function buildEventSeriesMeta(
     }),
   );
 
+  const eventStart = dynamic?.start_time || product.start_time;
   const videos: MetaVideo[] = [];
-  const seasonNames: string[] = [];
+  const seasons: Array<{ season: number; name: string }> = [];
   let season = 0;
+  let hasScheduledVideos = false;
 
   for (const col of collections) {
     if (!shouldIncludeCollection(col)) continue;
     season += 1;
-    seasonNames.push(col.label || `Season ${season}`);
+    const railLabel = (col.label || `Season ${season}`).trim();
+    seasons.push({ season, name: railLabel });
     let episode = 0;
     for (const card of col.cards || []) {
       if (card.type !== 'video' || card.playable === false) continue;
       episode += 1;
-      videos.push(cardToVideoEntry(card, season, episode));
+      if (card.start_time && isCalendarReleased(card.start_time)) {
+        hasScheduledVideos = true;
+      }
+      videos.push(cardToVideoEntry(card, season, episode, eventStart, railLabel));
     }
   }
 
   const preview = eventCardToMetaPreview(product, dynamic);
   const location =
     dynamic?.header_badges?.find((b) => b.type === 'location')?.value || product.subheading;
-  const seasonLegend = seasonNames.map((name, i) => `Season ${i + 1}: ${name}`).join(' · ');
+  const seasonLegend = seasons.map((s) => `S${s.season}: ${s.name}`).join(' · ');
   const description = [
     product.short_description || product.long_description || '',
     location ? `Location: ${location}` : '',
@@ -481,8 +501,20 @@ export async function buildEventSeriesMeta(
     .filter(Boolean)
     .join('\n\n');
 
-  const eventStart = dynamic?.start_time || product.start_time;
-  const hasScheduledVideos = videos.some((v) => isCalendarReleased(v.released));
+  // Surface Rally.tv rail names on the detail page. Stremio's season picker only
+  // ever shows "Season N"; these links map each number to the WRC section title.
+  const metaId = toMetaId(pageId);
+  const seasonLinks = seasons
+    .map((s) => {
+      const first = videos.find((v) => v.season === s.season);
+      if (!first) return null;
+      return {
+        name: `S${s.season}: ${s.name}`,
+        category: 'Seasons',
+        url: `stremio:///detail/series/${metaId}/${first.id}`,
+      };
+    })
+    .filter((l): l is { name: string; category: string; url: string } => Boolean(l));
 
   return {
     ...preview,
@@ -491,12 +523,15 @@ export async function buildEventSeriesMeta(
     videos,
     released: eventStart || undefined,
     website: product.share_url || `https://www.rally.tv/en/page/${pageId}`,
+    links: seasonLinks.length ? seasonLinks : undefined,
+    // Named seasons for clients that support them (AIOStreams / Jellyfin, etc.)
+    seasons,
     // Stremio calendar / UPCOMING badge (undocumented; American spelling)
     behaviorHints: hasScheduledVideos ? { hasScheduledVideos: true } : undefined,
   } as MetaDetail;
 }
 
-/** True when `released` is a real air date (not the epoch fallback used when Rally omits start_time). */
+/** True when `released` is a usable air date (excludes missing/invalid and Unix-epoch placeholders). */
 export function isCalendarReleased(released: string | undefined | null): boolean {
   if (!released) return false;
   const t = Date.parse(released);
@@ -641,7 +676,12 @@ export async function buildCalendarMetasDetailed(
         }
 
         const meta = await buildEventSeriesMeta(productId, config);
-        let videos = (meta.videos || []).filter((v) => isCalendarReleased(v.released));
+        // Only cards with their own start_time belong on Calendar. VOD rails reuse the
+        // event start as `released` for display — exclude those so they don't flood it.
+        let videos = (meta.videos || []).filter(
+          (v) =>
+            isCalendarReleased(v.released) && (!meta.released || v.released !== meta.released),
+        );
 
         // Upcoming rallies often have no Schedule rail yet — fall back to event dates.
         if (!videos.length && meta.released && isCalendarReleased(meta.released)) {

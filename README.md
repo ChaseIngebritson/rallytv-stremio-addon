@@ -137,7 +137,7 @@ Without ffmpeg, demuxed titles fall back to a **video-only** media playlist (oft
 ## Limitations
 
 - Legacy `api.redbull.tv/v3/products/{id}` returns 404; events use **tv-api** `products/v5.2` + `collections/v5.2`
-- Stremio seasons are numbered (Season 1 = Schedule, Season 2 = Full Stage Replays, …); section names are in the series description
+- Stremio’s season picker always says “Season N”; Rally.tv rail names (Schedule, Full Stage Replays, …) are prefixed on episode titles, listed as Seasons links, and included in the `seasons` meta field
 - Entitlement enforcement may tighten later — keep an Auth0 token ready
 - If Rally.tv enables DRM on an asset, that title will simply have **no playable stream**
 - VOD remux runs ffmpeg per HLS segment (cached briefly); heavy seeking still costs CPU on the host
