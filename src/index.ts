@@ -16,6 +16,7 @@ import {
   pipeRemuxMpegTs,
   publicBaseUrl,
   remuxStreamUrl,
+  resolveFfmpegPath,
 } from './remux';
 import { AddonConfig, EventCatalogKey, isRallyError } from './types/rally';
 
@@ -413,7 +414,12 @@ app.use(getRouter(addonInterface));
 app.listen(PORT, () => {
   console.log(`Rally.tv Stremio addon listening on :${PORT}`);
   console.log(`Configure (get token-aware manifest): http://127.0.0.1:${PORT}/configure`);
-  console.log(`ffmpeg remux: ${hasFfmpeg() ? 'available' : 'MISSING — demuxed titles fall back to video-only'}`);
+  const ff = resolveFfmpegPath();
+  console.log(
+    ff
+      ? `ffmpeg remux: available (${ff})`
+      : 'ffmpeg remux: MISSING — demuxed titles fall back to video-only',
+  );
   console.log(`Public base URL: ${publicBaseUrl(PORT)}`);
 });
 

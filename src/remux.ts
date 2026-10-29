@@ -1,17 +1,33 @@
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import type { Request, Response } from 'express';
+import ffmpegStatic from 'ffmpeg-static';
 
-let ffmpegAvailable: boolean | null = null;
+let resolvedFfmpeg: string | null | undefined;
 
-export function hasFfmpeg(): boolean {
-  if (ffmpegAvailable !== null) return ffmpegAvailable;
+/** Prefer bundled ffmpeg-static, then PATH `ffmpeg`. */
+export function resolveFfmpegPath(): string | null {
+  if (resolvedFfmpeg !== undefined) return resolvedFfmpeg;
+  if (ffmpegStatic) {
+    try {
+      execFileSync(ffmpegStatic, ['-version'], { stdio: 'ignore' });
+      resolvedFfmpeg = ffmpegStatic;
+      return resolvedFfmpeg;
+    } catch {
+      // fall through
+    }
+  }
   try {
     execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
-    ffmpegAvailable = true;
+    resolvedFfmpeg = 'ffmpeg';
+    return resolvedFfmpeg;
   } catch {
-    ffmpegAvailable = false;
+    resolvedFfmpeg = null;
+    return null;
   }
-  return ffmpegAvailable;
+}
+
+export function hasFfmpeg(): boolean {
+  return resolveFfmpegPath() !== null;
 }
 
 function headerBlock(headers: Record<string, string>): string {
@@ -34,6 +50,14 @@ export function pipeRemuxMpegTs(opts: {
   res: Response;
 }): ChildProcess | null {
   const { videoUrl, audioUrl, headers, req, res } = opts;
+  const bin = resolveFfmpegPath();
+  if (!bin) {
+    if (!res.headersSent) {
+      res.status(503).type('text/plain').send('ffmpeg not available');
+    }
+    return null;
+  }
+
   const hdr = headerBlock(headers);
 
   const args = ['-hide_banner', '-loglevel', 'error', '-user_agent', headers['User-Agent'] || 'Mozilla/5.0'];
@@ -51,7 +75,7 @@ export function pipeRemuxMpegTs(opts: {
 
   let ff: ChildProcess;
   try {
-    ff = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    ff = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error('[remux] spawn failed', message);
